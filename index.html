@@ -1,3 +1,4 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -389,11 +390,12 @@ function isCJK(s){return /[一-鿿]/.test(s)}
 function isP(ch){return " 　，。！？、；：“”‘’（）,.!?;:'()-—…·".indexOf(ch)>-1}
 function byId(id){return S.cards.find(function(x){return x.id===id})}
 function mkCard(id,a){return{id:id,g:"",t:"",h:a[0],p:a[1],m:a[2],ex:a[3]||"",exp:a[4]||"",exm:a[5]||"",due:Date.now(),reps:0,es:0,wrong:0}}
+var FIRST=false;
 function load(){
  var saved=null;
  try{var r=localStorage.getItem(KEY);if(r)saved=JSON.parse(r)}catch(e){}
  if(saved&&saved.cards){S.cards=saved.cards;S.log=saved.log||{};S.time=saved.time||{};S.lessons=saved.lessons||[]}
- else S.cards=SEED.map(function(a,i){return mkCard(i+1,a)});
+ else{S.cards=SEED.map(function(a,i){return mkCard(i+1,a)});FIRST=true}
  var now=Date.now(),off=new Date().getTimezoneOffset()*6e4;
  S.cards.forEach(function(c){
   if(c.due===undefined||c.due<1e11){c.due=(c.due===undefined||c.due<=today())?now:c.due*864e5+off}
@@ -437,7 +439,7 @@ var IDLE_MS=60000,lastAct=Date.now(),tickN=0;
 setInterval(function(){
  if(document.hidden||Date.now()-lastAct>IDLE_MS)return;
  var d=today();S.time[d]=(S.time[d]||0)+1;tickN++;
- if(tickN%10===0){save();if(S.tab==="sta")renderSta()}
+ if(tickN%10===0){save();var ae=document.activeElement;if(S.tab==="sta"&&!(ae&&/INPUT|TEXTAREA/.test(ae.tagName)&&ae.closest&&ae.closest("#sta")))renderSta()}
 },1000);
 document.addEventListener("visibilitychange",function(){if(document.hidden)save()});
 window.addEventListener("pagehide",save);
@@ -709,15 +711,160 @@ function dlgShell(title,inner){
  o.innerHTML='<div class="card" style="max-width:520px;width:100%;margin:0;max-height:90vh;overflow:auto"><b>'+title+'</b>'+inner+'</div>';
  document.body.appendChild(o);o.close=function(){document.body.removeChild(o)};return o;
 }
+async function saveBlob(fn,blob,msg){
+ var info=fn+" ("+Math.round(blob.size/1024)+" KB)";
+ var dl=null;try{dl=window.claude&&claude.use?await claude.use("downloads"):null}catch(e){}
+ if(dl){
+  try{await dl.save({filename:fn,data:blob});msg("Đã lưu "+info+".")}
+  catch(e){msg(e&&e.code==="declined"?"Bạn đã huỷ việc lưu file.":"Không lưu được file ("+((e&&e.code)||(e&&e.message)||"lỗi")+"). Hãy dùng nút Sao chép JSON.")}
+ }else{
+  var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=fn;
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  msg("Đã tạo file "+info+". Nếu trình duyệt không tải xuống, hãy dùng nút Sao chép JSON.");
+ }
+}
+/* ----- Bộ từ chung: file deck.json đặt cạnh index.html, người dùng nạp/gộp vào dữ liệu của mình ----- */
+function audName(l){return l.id+"-"+String(l.src.name||"audio").replace(/[^A-Za-z0-9._-]+/g,"_")}
+/* Lấy âm thanh của bài: trong trình duyệt → hoặc tải từ audio/ cạnh trang (bài chung) rồi lưu lại */
+function audFor(l){
+ return audGet(l.id).then(function(b){
+  if(b)return b;
+  if(!l.src.url)return null;
+  return fetch(l.src.url,{cache:"force-cache"}).then(function(r){if(!r.ok)throw 0;return r.blob()}).then(function(bl){audPut(l.id,bl);return bl}).catch(function(){return null});
+ });
+}
+/* ----- Tiến độ học: file riêng của từng người ----- */
+function myName(){try{return localStorage.getItem("zh-name")||""}catch(e){return""}}
+function fmtDay(d){var x=new Date(d*864e5);return("0"+x.getUTCDate()).slice(-2)+"/"+("0"+(x.getUTCMonth()+1)).slice(-2)+"/"+x.getUTCFullYear()}
+function buildProgress(name){
+ var cards={};S.cards.forEach(function(c){if(c.reps||c.es||c.wrong||c.due>Date.now()+1e3)cards[c.h]={due:c.due,es:c.es||0,reps:c.reps||0,wrong:c.wrong||0}});
+ var ls={};S.lessons.forEach(function(l){ls[l.id]={title:l.title,n:l.items.length,pos:l.pos||0,items:l.items.map(function(i){return{wrong:i.wrong||0,mine:i.mine||""}})}});
+ return{app:"so-tay-tieng-trung",kind:"progress",v:1,name:name,exported:new Date().toISOString(),total:S.cards.length,cards:cards,log:S.log,time:S.time,lessons:ls};
+}
+function applyProgress(p){
+ var n=0;
+ S.cards.forEach(function(c){var x=p.cards&&p.cards[c.h];if(x){c.due=x.due;c.es=x.es;c.reps=x.reps;c.wrong=x.wrong;n++}});
+ Object.keys(p.log||{}).forEach(function(k){S.log[k]=Math.max(S.log[k]||0,p.log[k])});
+ Object.keys(p.time||{}).forEach(function(k){S.time[k]=Math.max(S.time[k]||0,p.time[k])});
+ S.lessons.forEach(function(l){var x=p.lessons&&p.lessons[l.id];if(!x)return;l.pos=x.pos||0;(x.items||[]).forEach(function(i,k){if(l.items[k]){l.items[k].wrong=i.wrong||0;if(i.mine)l.items[k].mine=i.mine}})});
+ save();return n;
+}
+function trkLoad(){try{return JSON.parse(localStorage.getItem("zh-track-v1")||"[]")}catch(e){return[]}}
+function trkSave(a){try{localStorage.setItem("zh-track-v1",JSON.stringify(a))}catch(e){}}
+function trkSummary(p){
+ var learned=0,due=0,reps=0,wrong=0,now=Date.now(),hard=[];
+ Object.keys(p.cards||{}).forEach(function(h){var c=p.cards[h];if(c.es>=3)learned++;if(c.due<=now)due++;reps+=c.reps||0;wrong+=c.wrong||0;if(c.wrong)hard.push([h,c.wrong])});
+ hard.sort(function(a,b){return b[1]-a[1]});
+ var secs=0,days=0,last=0;Object.keys(p.time||{}).forEach(function(k){if(p.time[k]>0){secs+=p.time[k];days++;if(+k>last)last=+k}});
+ var lsn=Object.keys(p.lessons||{}).map(function(k){var l=p.lessons[k];return l.title+": "+Math.min(l.pos,l.n)+"/"+l.n+" câu"});
+ return{learned:learned,due:due,reps:reps,wrong:wrong,secs:secs,days:days,last:last,hard:hard.slice(0,5),lessons:lsn};
+}
+function renderTrk(){
+ var el=$("trk");if(!el)return;
+ var list=trkLoad().sort(function(a,b){return String(a.name).localeCompare(String(b.name))});
+ var rows=list.map(function(p,i){var m=trkSummary(p);return `<tr><td><b>${esc(p.name||"(chưa đặt tên)")}</b><div class="mu" style="text-align:left">Xuất ${esc((p.exported||"").slice(0,10))}</div></td><td>${m.learned}/${p.total||"?"}</td><td>${m.due}</td><td>${fmtDur(m.secs)}<div class="mu" style="text-align:left">${m.days} ngày${m.last?" · gần nhất "+fmtDay(m.last):""}</div></td><td><button data-tv="${i}">Chi tiết</button> <button data-tx="${i}">✕</button></td></tr>${p._open?`<tr><td colspan="5" style="background:var(--ac2)"><div style="font-size:14px">Lượt ôn: ${m.reps} · Lần sai: ${m.wrong}<br>Từ sai nhiều: ${m.hard.map(function(x){return esc(x[0])+" ("+x[1]+")"}).join(", ")||"chưa có"}<br>Bài nghe chép: ${m.lessons.map(esc).join("; ")||"chưa có"}</div></td></tr>`:""}`}).join("");
+ el.innerHTML=`<p class="mu" style="text-align:left;margin:6px 0">Nạp file tiến độ mà từng người học gửi cho bạn. Dữ liệu này chỉ để xem, <b>không thay đổi</b> tiến độ của bạn.</p>
+ <input type="file" id="trkf" accept=".json,application/json" multiple>
+ ${list.length?`<div style="overflow:auto;margin-top:10px"><table class="dt"><thead><tr><th>Người học</th><th>Đã thuộc</th><th>Đến hạn</th><th>Thời gian active</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`:'<p class="mu">Chưa nạp file tiến độ nào.</p>'}`;
+ $("trkf").onchange=function(){
+  var fs=[].slice.call(this.files),got=0,bad=0,self=this;
+  if(!fs.length)return;
+  var done=0;
+  fs.forEach(function(f){var r=new FileReader();r.onload=function(){
+   try{var p=JSON.parse(r.result);if(p.kind!=="progress"||!p.cards)throw 0;
+    var a=trkLoad(),k=a.findIndex(function(x){return x.name===p.name});
+    if(k>-1){if(String(a[k].exported)<=String(p.exported))a[k]=p;}else a.push(p);
+    trkSave(a);got++}catch(e){bad++}
+   if(++done===fs.length){renderTrk();if(bad)alert("Có "+bad+" file không phải file tiến độ hợp lệ (cần xuất bằng nút «Tải file tiến độ»).")}
+  };r.readAsText(f,"utf-8")});
+ };
+ [].forEach.call(el.querySelectorAll("[data-tv]"),function(b){b.onclick=function(){var a=trkLoad().sort(function(x,y){return String(x.name).localeCompare(String(y.name))});a[+b.dataset.tv]._open=!a[+b.dataset.tv]._open;trkSave(a);renderTrk()}});
+ [].forEach.call(el.querySelectorAll("[data-tx]"),function(b){b.onclick=function(){var a=trkLoad().sort(function(x,y){return String(x.name).localeCompare(String(y.name))});var p=a[+b.dataset.tx];uiConfirm("Xoá tiến độ của «"+(p.name||"người học")+"» khỏi danh sách theo dõi?",function(){a.splice(+b.dataset.tx,1);trkSave(a);renderTrk()})}});
+}
+function progressCard(){
+ return `<div class="card"><b>📤 Tiến độ học</b><p class="mu" style="text-align:left;margin:6px 0">Tiến độ (ôn tập, thời gian học, kết quả nghe chép) lưu trong trình duyệt của máy. Xuất ra file riêng để gửi cho người khác hoặc để khôi phục sang máy khác.</p>
+ <div class="row" style="margin-top:0"><input id="pname" placeholder="Nhập để đặt tên file tiến độ" value="${esc(myName())}"></div>
+ <div class="row" style="flex-wrap:wrap"><button class="pri" id="pexp">Tải file tiến độ</button></div>
+ <p class="mu" style="text-align:left;margin:10px 0 4px">Khôi phục tiến độ từ file đã xuất (chỉ áp lên những từ đang có trong máy này, không xoá dữ liệu khác):</p>
+ <input type="file" id="pimp" accept=".json,application/json"><p class="mu" id="pmsg" style="text-align:left;margin:6px 0 0"></p></div>
+ <div class="card"><b>👥 Theo dõi người học</b><div id="trk"></div></div>`;
+}
+function bindProgress(){
+ var nm=$("pname");if(!nm)return;
+ nm.oninput=function(){try{localStorage.setItem("zh-name",nm.value.trim())}catch(e){}};
+ var msg=function(m){$("pmsg").textContent=m};
+ $("pexp").onclick=function(){
+  var name=nm.value.trim();if(!name){nm.focus();return msg("Hãy nhập tên của bạn trước khi tải file.")}
+  var dt=new Date(),pad=function(n){return("0"+n).slice(-2)};
+  var slug=name.normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/đ/g,"d").replace(/Đ/g,"D").replace(/[^A-Za-z0-9]+/g,"-").replace(/^-|-$/g,"")||"nguoi-hoc";
+  saveBlob("tien-do-"+slug+"-"+dt.getFullYear()+pad(dt.getMonth()+1)+pad(dt.getDate())+".json",new Blob([JSON.stringify(buildProgress(name))],{type:"application/json"}),msg);
+ };
+ $("pimp").onchange=function(){
+  var f=this.files[0];if(!f)return;var r=new FileReader();
+  r.onload=function(){
+   try{var p=JSON.parse(r.result);if(p.kind!=="progress")throw 0}catch(e){return msg("Đây không phải file tiến độ hợp lệ.")}
+   uiConfirm("Áp tiến độ của «"+(p.name||"file này")+"» lên dữ liệu hiện tại? Tiến độ của các từ trùng sẽ bị thay bằng nội dung trong file.",function(){var n=applyProgress(p);msg("Đã khôi phục tiến độ của "+n+" từ.");renderSta()});
+  };r.readAsText(f,"utf-8");
+ };
+ renderTrk();
+}
+function buildDeck(){
+ return {app:"so-tay-tieng-trung",deck:true,v:1,
+  cards:S.cards.map(function(c){return{g:c.g||"",t:c.t||"",h:c.h,p:c.p||"",m:c.m||"",ex:c.ex||"",exp:c.exp||"",exm:c.exm||""}}),
+  lessons:S.lessons.map(function(l){return{id:l.id,title:l.title,src:l.src.type==="file"?{type:"file",name:l.src.name,url:"audio/"+audName(l)}:l.src,items:l.items.map(function(i){return{t:i.t,e:i.e,txt:i.txt||""}})}})};
+}
+function mergeDeck(d){
+ var r={addC:0,addL:0,updL:0},have={},id=S.cards.reduce(function(a,c){return Math.max(a,c.id)},0);
+ S.cards.forEach(function(c){have[c.h]=1});
+ (d.cards||[]).forEach(function(x){
+  if(!x||!x.h||have[x.h])return;
+  have[x.h]=1;id++;
+  var c=mkCard(id,[x.h,x.p||"",x.m||"",x.ex||"",x.exp||"",x.exm||""]);c.g=x.g||"";c.t=x.t||"";S.cards.push(c);r.addC++;
+ });
+ (d.lessons||[]).forEach(function(x){
+  if(!x||!x.id||!x.items)return;
+  var ex=S.lessons.find(function(l){return l.id===x.id});
+  if(ex){
+   if(!ex.shared)return;
+   ex.title=x.title;ex.src=x.src;
+   ex.items=x.items.map(function(i,k){var o=ex.items[k]||{};return{t:i.t,e:i.e,txt:i.txt||"",mine:o.mine,wrong:o.wrong}});
+   r.updL++;
+  }else{S.lessons.push({id:x.id,title:x.title,src:x.src,items:x.items.map(function(i){return{t:i.t,e:i.e,txt:i.txt||""}}),pos:0,shared:true});r.addL++}
+ });
+ return r;
+}
+function fetchDeck(){
+ return fetch("deck.json?v="+Date.now(),{cache:"no-store"}).then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(d){if(!d||!Array.isArray(d.cards))throw 0;return d});
+}
+function deckBtn(){
+ var b=$("dk"),m=$("dkm");if(!b)return;
+ b.onclick=function(){
+  m.textContent="Đang tải...";
+  fetchDeck().then(function(d){
+   var r=mergeDeck(d);save();
+   m.textContent="Đã thêm "+r.addC+" từ mới"+(r.addL?", "+r.addL+" bài nghe chép mới":"")+(r.updL?", cập nhật "+r.updL+" bài nghe chép":"")+". Từ đã có và tiến độ học của bạn được giữ nguyên.";
+   if(r.addC||r.addL||r.updL){cur=null;setTimeout(renderVoc,1500)}
+  },function(){m.textContent="Chưa có bộ từ chung ở trang này (không tìm thấy file deck.json cạnh trang)."});
+ };
+}
 function exportDlg(){
  var nf=S.lessons.filter(function(l){return l.src.type==="file"}).length;
  var o=dlgShell("Sao lưu dữ liệu",`<p class="mu" style="text-align:left;margin:6px 0">Gồm từ vựng, lịch sử ôn tập, thời gian học và các bài nghe chép${nf?" (có "+nf+" bài dùng file âm thanh)":""}.</p>
  <textarea id="bkt" rows="6" readonly></textarea>
- <div class="row" style="flex-wrap:wrap"><button class="pri" id="bkdl">⬇ Tải file sao lưu${nf?" (kèm âm thanh)":""}</button><button id="bkcp">Sao chép JSON (không kèm âm thanh)</button><button id="bkx">Đóng</button></div>
+ <div class="row" style="flex-wrap:wrap"><button class="pri" id="bkdl">⬇ Tải file sao lưu${nf?" (kèm âm thanh)":""}</button><button id="bkcp">Sao chép JSON (không kèm âm thanh)</button><button id="bkdeck">Tải bộ từ chung (deck.json)</button><button id="bkx">Đóng</button></div>
+ <p class="mu" style="text-align:left;margin:6px 0">«Bộ từ chung» gồm từ vựng, lời thoại và tên file âm thanh; không có tiến độ hay thời gian học. Đặt <b>deck.json</b> cạnh index.html trên GitHub. File âm thanh của các bài nghe chép chép riêng vào thư mục <b>audio/</b> cạnh index.html, đúng tên bên dưới.</p>
+ <div id="bkaud"></div>
  <p class="mu" id="bkmsg" style="text-align:left;margin:6px 0"></p>`);
  var txt=JSON.stringify(bkData());o.querySelector("#bkt").value=txt;
  var msg=function(m){o.querySelector("#bkmsg").textContent=m};
  o.querySelector("#bkx").onclick=o.close;
+ var fl=S.lessons.filter(function(l){return l.src.type==="file"});
+ o.querySelector("#bkaud").innerHTML=fl.length?fl.map(function(l,i){return `<div class="item" style="font-size:14px"><span style="text-align:left;word-break:break-all">audio/${esc(audName(l))}</span><button data-au="${i}">⬇</button></div>`}).join(""):'<p class="mu" style="text-align:left;margin:0">Chưa có bài nghe chép dùng file âm thanh.</p>';
+ [].forEach.call(o.querySelectorAll("[data-au]"),function(b){b.onclick=function(){
+  var l=fl[+b.dataset.au];
+  audGet(l.id).then(function(bl){if(!bl)return msg("Không tìm thấy file âm thanh của bài này trong trình duyệt. Hãy mở bài rồi chọn lại file.");saveBlob(audName(l),bl,msg)});
+ }});
+ o.querySelector("#bkdeck").onclick=function(){saveBlob("deck.json",new Blob([JSON.stringify(buildDeck())],{type:"application/json"}),msg)};
  o.querySelector("#bkcp").onclick=function(){
   var ta=o.querySelector("#bkt");ta.select();var ok=false;
   try{ok=document.execCommand("copy")}catch(e){}
@@ -731,17 +878,7 @@ function exportDlg(){
   d.audio=audio;
   var blob=new Blob([JSON.stringify(d)],{type:"application/json"});
   var dt=new Date(),pad=function(n){return("0"+n).slice(-2)};
-  var fn="so-tay-tieng-trung-"+dt.getFullYear()+pad(dt.getMonth()+1)+pad(dt.getDate())+".json";
-  var info=fn+" ("+Math.round(blob.size/1024)+" KB)";
-  var dl=null;try{dl=window.claude&&claude.use?await claude.use("downloads"):null}catch(e){}
-  if(dl){
-   try{await dl.save({filename:fn,data:blob});msg("Đã lưu "+info+".")}
-   catch(e){msg(e&&e.code==="declined"?"Bạn đã huỷ việc lưu file.":"Không lưu được file ("+((e&&e.code)||(e&&e.message)||"lỗi")+"). Hãy dùng nút Sao chép JSON.")}
-  }else{
-   var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=fn;
-   document.body.appendChild(a);a.click();document.body.removeChild(a);
-   msg("Đã tạo file "+info+". Nếu trình duyệt không tải xuống, hãy dùng nút Sao chép JSON.");
-  }
+  await saveBlob("so-tay-tieng-trung-"+dt.getFullYear()+pad(dt.getMonth()+1)+pad(dt.getDate())+".json",blob,msg);
  };
 }
 function importDlg(){
@@ -761,7 +898,8 @@ function importDlg(){
 }
 function renderVoc(){
  var el=$("voc");
- el.innerHTML=`<div class="card"><b>Nhập từ file Excel / CSV</b><p class="mu" style="text-align:left;margin:6px 0">Dòng đầu là tiêu đề (tuỳ chọn). Các cột theo thứ tự: <b>Phân nhóm · Phân dạng từ · Từ mới · Pinyin · Giải thích · Ví dụ (chữ Hán) · Phiên âm ví dụ · Dịch</b>. Từ đã có sẽ được bỏ qua.</p><input type="file" id="xf" accept=".xlsx,.xls,.csv"></div>
+ el.innerHTML=`<div class="card"><b>Bộ từ chung</b><p class="mu" style="text-align:left;margin:6px 0">Nạp thêm từ vựng và bài nghe chép mà người quản lý trang đã chuẩn bị sẵn. Không ghi đè từ đã có và tiến độ học của bạn.</p><div class="row" style="margin-top:0"><button id="dk">Cập nhật bộ từ chung</button></div><p class="mu" id="dkm" style="text-align:left;margin:6px 0 0"></p></div>
+ <div class="card"><b>Nhập từ file Excel / CSV</b><p class="mu" style="text-align:left;margin:6px 0">Dòng đầu là tiêu đề (tuỳ chọn). Các cột theo thứ tự: <b>Phân nhóm · Phân dạng từ · Từ mới · Pinyin · Giải thích · Ví dụ (chữ Hán) · Phiên âm ví dụ · Dịch</b>. Từ đã có sẽ được bỏ qua.</p><input type="file" id="xf" accept=".xlsx,.xls,.csv"></div>
  <div class="card"><b>Thêm từ mới</b><div class="row"><input id="ng" placeholder="Phân nhóm"><input id="nt" placeholder="Phân dạng từ"></div><div class="row"><input id="nh" placeholder="Từ mới (chữ Hán)"><input id="np" placeholder="Pinyin"></div><div class="mu" id="nhint" style="text-align:left;margin-top:4px"></div><div class="row"><input id="nm" placeholder="Giải thích"></div><div class="row"><input id="ne" placeholder="Ví dụ (chữ Hán)"></div><div class="row"><input id="nep" placeholder="Phiên âm ví dụ"><input id="nem" placeholder="Dịch"></div><button class="pri" id="add" style="width:100%;margin-top:10px">Thêm</button></div>
  <div class="card" id="pyc"></div>
  <div class="card"><div class="row" style="margin:0 0 8px"><input id="sq" placeholder="Tìm kiếm..." value="${esc(q)}"><select id="gf" style="width:auto">${gopts()}</select></div><div class="list" id="ls"></div>
@@ -838,7 +976,7 @@ function renderVoc(){
   var c=mkCard(id,[h,p,m,$("ne").value.trim(),$("nep").value.trim(),$("nem").value.trim()]);c.g=$("ng").value.trim();c.t=$("nt").value.trim();
   S.cards.push(c);save();cur=null;renderVoc();
  };
- $("ex").onclick=exportDlg;$("im").onclick=importDlg;
+ $("ex").onclick=exportDlg;$("im").onclick=importDlg;deckBtn();
 }
 function load2(){var now=Date.now(),off=new Date().getTimezoneOffset()*6e4;S.cards.forEach(function(c){if(c.due===undefined||c.due<1e11)c.due=(c.due===undefined||c.due<=today())?now:c.due*864e5+off;c.es=c.es||0;c.reps=c.reps||0;c.wrong=c.wrong||0})}
 
@@ -938,7 +1076,9 @@ function renderSta(){
  $("sta").innerHTML=`<div class="stats"><div class="card stat"><b>🔥 ${streak}</b><span>ngày học liên tiếp</span></div><div class="card stat"><b>${due}</b><span>thẻ đến hạn ôn</span></div><div class="card stat"><b>${n}</b><span>tổng số từ</span></div><div class="card stat"><b>${learned}</b><span>từ đã thuộc (bấm Dễ 3 lần liên tiếp)</span></div></div>
  ${dayCard}
  <div class="card"><b>28 ngày gần nhất</b><div class="heat">${heat}</div></div>
- <div class="card"><b>Từ hay sai nhất</b>${hard.length?hard.map(function(c){return `<div class="item"><span><span class="h">${esc(c.h)}</span> ${esc(c.m)}</span><span class="tag">sai ${c.wrong}</span></div>`}).join(""):'<p class="mu">Chưa có từ nào bị sai. Tuyệt vời!</p>'}</div>`;
+ <div class="card"><b>Từ hay sai nhất</b>${hard.length?hard.map(function(c){return `<div class="item"><span><span class="h">${esc(c.h)}</span> ${esc(c.m)}</span><span class="tag">sai ${c.wrong}</span></div>`}).join(""):'<p class="mu">Chưa có từ nào bị sai. Tuyệt vời!</p>'}</div>
+ ${progressCard()}`;
+ bindProgress();
 }
 
 /* =====================================================
@@ -1098,7 +1238,7 @@ function renderLHome(){
  <p class="mu" style="text-align:left;margin:4px 0">Hoặc nạp file phụ đề .srt / .vtt / .lrc / .txt ở ô trên. Nếu lời thoại chưa có mốc thời gian, bước kế tiếp sẽ giúp bạn đánh dấu bằng cách vừa nghe vừa nhấn Enter.</p>
  <button class="pri" id="lcreate" style="width:100%;margin-top:6px">Tạo bài</button></div>
  <div class="card"><b>Bài đã lưu</b><div class="list" id="llist">${list}</div>
- <p class="mu" style="text-align:left;margin-bottom:0">Bài được lưu cùng lời thoại, mốc thời gian và cả file âm thanh trong trình duyệt này, nên lần sau chỉ cần bấm Mở. Nếu trình duyệt xoá dữ liệu, bài sẽ xin bạn chọn lại file.</p></div>`;
+ <p class="mu" style="text-align:left;margin-bottom:0">Bài được lưu cùng lời thoại, mốc thời gian và cả file âm thanh trong trình duyệt này. Nếu trình duyệt xoá dữ liệu hoặc cookies sẽ phải nhập lại file.</p></div>`;
  $("lsrc").onchange=function(){$("lbfile").classList.toggle("hide",this.value!=="file");$("lbyt").classList.toggle("hide",this.value!=="yt")};
  $("ltf").onchange=function(){
   var f=this.files[0];if(!f)return;var rd=new FileReader();
@@ -1130,7 +1270,7 @@ function renderLHome(){
  [].forEach.call(el.querySelectorAll("[data-lo]"),function(b){b.onclick=function(){openLesson(+b.dataset.lo)}});
  [].forEach.call(el.querySelectorAll("[data-le]"),function(b){b.onclick=function(){
   var id=+b.dataset.le,l=S.lessons.find(function(x){return x.id===id}),go=function(){LES.cur=id;LES.view="edit";LES.segEnd=null;renderLis()};
-  if(l&&l.src.type==="file"&&LES.urlId!==id)audGet(id).then(function(bl){LES.urlId=null;if(bl){LES.blob=bl;LES.urlId=id;return pLoad(bl,id).catch(function(){})}}).then(go);else if(l&&l.src.type==="file")pLoad(LES.blob,id).catch(function(){}).then(go);else go();
+  if(l&&l.src.type==="file"&&LES.urlId!==id)audFor(l).then(function(bl){LES.urlId=null;if(bl){LES.blob=bl;LES.urlId=id;return pLoad(bl,id).catch(function(){})}}).then(go);else if(l&&l.src.type==="file")pLoad(LES.blob,id).catch(function(){}).then(go);else go();
  }});
  [].forEach.call(el.querySelectorAll("[data-ld]"),function(b){b.onclick=function(){var id=+b.dataset.ld;uiConfirm("Xoá bài này? File âm thanh đã lưu cũng bị xoá.",function(){audDel(id);S.lessons=S.lessons.filter(function(l){return l.id!==id});if(LES.cur===id)LES.cur=null;save();renderLHome()})}});
 }
@@ -1194,7 +1334,7 @@ function openLesson(id){
   else go();
  };
  if(l.src.type==="file"&&LES.urlId!==id){
-  audGet(id).then(function(b){if(b){LES.blob=b;LES.urlId=id}else LES.urlId=null;fin()});
+  audFor(l).then(function(b){if(b){LES.blob=b;LES.urlId=id}else LES.urlId=null;fin()});
  }else fin();
 }
 /* ----- Lưu file âm thanh trong IndexedDB để lần sau không phải chọn lại ----- */
@@ -1425,6 +1565,15 @@ function lisKey(e){
 }
 function render(){({rev:renderRev,dic:renderDic,lis:renderLis,voc:renderVoc,rad:renderRad,sta:renderSta})[S.tab]()}
 load();render();
+/* Người dùng mới: nếu có deck.json cạnh trang thì dùng làm dữ liệu ban đầu thay cho từ mẫu */
+if(FIRST&&/^https?:/.test(location.protocol)){
+ fetchDeck().then(function(d){
+  if(!d.cards.length)return;
+  S.cards=[];mergeDeck(d);save();cur=null;render();
+ },function(){});
+}
 </script>
 </body>
 </html>
+
+</body></html>
