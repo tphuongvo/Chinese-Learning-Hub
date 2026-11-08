@@ -1,4 +1,3 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -119,7 +118,7 @@ var SEED=[
 ["谢谢","xièxie","cảm ơn","谢谢你的帮助。","Xièxie nǐ de bāngzhù.","Cảm ơn sự giúp đỡ của bạn."],
 ["对不起","duìbuqǐ","xin lỗi","对不起，我迟到了。","Duìbuqǐ, wǒ chídào le.","Xin lỗi, tôi đến muộn rồi."],
 ["学习","xuéxí","học tập","我每天学习汉语。","Wǒ měitiān xuéxí Hànyǔ.","Mỗi ngày tôi học tiếng Trung."],
-["朋友","péngyou","bạn bè","他是我的好朋友。","Tā shì wǒ de hǎo péngyou.","Anh ấy là người bạn tốt của tôi."],
+["朋友","péngyou","bạn bè","他是我的好朋友。","Tā shì wǒ de hǎo péngyou.","Anh ấy là người bạn tốt."],
 ["喜欢","xǐhuan","thích","我喜欢喝茶。","Wǒ xǐhuan hē chá.","Tôi thích uống trà."],
 ["今天","jīntiān","hôm nay","今天天气很好。","Jīntiān tiānqì hěn hǎo.","Hôm nay thời tiết rất đẹp."],
 ["明天","míngtiān","ngày mai","明天你有空吗？","Míngtiān nǐ yǒu kòng ma?","Ngày mai bạn có rảnh không?"],
@@ -783,7 +782,7 @@ function renderTrk(){
 }
 function progressCard(){
  return `<div class="card"><b>📤 Tiến độ học</b><p class="mu" style="text-align:left;margin:6px 0">Tiến độ (ôn tập, thời gian học, kết quả nghe chép) lưu trong trình duyệt của máy. Xuất ra file riêng để gửi cho người khác hoặc để khôi phục sang máy khác.</p>
- <div class="row" style="margin-top:0"><input id="pname" placeholder="Nhập để đặt tên file tiến độ" value="${esc(myName())}"></div>
+ <div class="row" style="margin-top:0"><input id="pname" placeholder="Nhập để đặt tên file tiến độ)" value="${esc(myName())}"></div>
  <div class="row" style="flex-wrap:wrap"><button class="pri" id="pexp">Tải file tiến độ</button></div>
  <p class="mu" style="text-align:left;margin:10px 0 4px">Khôi phục tiến độ từ file đã xuất (chỉ áp lên những từ đang có trong máy này, không xoá dữ liệu khác):</p>
  <input type="file" id="pimp" accept=".json,application/json"><p class="mu" id="pmsg" style="text-align:left;margin:6px 0 0"></p></div>
@@ -998,7 +997,7 @@ function renderRad(){
  var el=$("rad"),mine=myRadSet();
  var opts='<option value="">Tất cả số nét</option>';for(var k=1;k<=17;k++)opts+=`<option value="${k}"${String(k)===RS?" selected":""}>${k} nét</option>`;
  el.innerHTML=`${radDetail()}<div class="card"><div class="row" style="margin-top:0"><input id="rq" placeholder="Tìm bộ (chữ, Hán Việt, pinyin, nghĩa)..." value="${esc(RQ)}"><select id="rs" style="width:auto">${opts}</select></div>
- <label class="mu" style="display:block;text-align:left;margin-top:8px"><input type="checkbox" id="rmy" style="width:auto"${RMY?" checked":""}> Chỉ hiện bộ có trong từ vựng của tôi (${Object.keys(mine).length} bộ)</label><div class="rgrid" id="rg"></div></div>`;
+ <label class="mu" style="display:block;text-align:left;margin-top:8px"><input type="checkbox" id="rmy" style="width:auto"${RMY?" checked":""}> Chỉ hiện bộ có trong từ vựng (${Object.keys(mine).length} bộ)</label><div class="rgrid" id="rg"></div></div>`;
  function grid(){
   var fq=fold(RQ);
   var out=RAD.map(function(r,i){return{r:r,i:i}}).filter(function(o){
@@ -1156,6 +1155,20 @@ function ytHandshake(){
 }
 /* Phát file âm thanh bằng Web Audio: giải mã cả file rồi phát chính xác từ giây bất kỳ (không phụ thuộc cách trình duyệt tua file mp3) */
 var P={ctx:null,buf:null,id:null,src:null,playing:false,off:0,t0:0,rate:1,endAt:null};
+/* Mở khoá âm thanh trên điện thoại: cần một lần chạm; chuyển iOS sang kênh "phát nhạc" để không bị công tắc im lặng chặn */
+function audioUnlock(){
+ try{if(navigator.audioSession)navigator.audioSession.type="playback"}catch(e){}
+ try{
+  var AC=window.AudioContext||window.webkitAudioContext;if(!P.ctx)P.ctx=new AC();
+  if(P.ctx.state!=="running")P.ctx.resume();
+  var b=P.ctx.createBuffer(1,1,22050),s0=P.ctx.createBufferSource();s0.buffer=b;s0.connect(P.ctx.destination);s0.start(0);
+ }catch(e){}
+ try{
+  if(!P.sil){P.sil=document.createElement("audio");P.sil.src="data:audio/wav;base64,UklGRvQHAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YdAHAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==";P.sil.loop=true;P.sil.setAttribute("playsinline","");P.sil.volume=0.01}
+  var pr=P.sil.play();if(pr&&pr.catch)pr.catch(function(){});
+ }catch(e){}
+}
+["touchend","click","keydown"].forEach(function(ev){document.addEventListener(ev,audioUnlock,{capture:true,passive:true})});
 function pLoad(blob,id){
  if(P.id===id&&P.buf)return Promise.resolve();
  pStop();P.id=id;P.buf=null;P.off=0;
@@ -1170,7 +1183,7 @@ function pPos(){
 }
 function pPlayFile(t,e){
  if(!P.buf)return;
- try{P.ctx.resume()}catch(x){}
+ audioUnlock();
  pStop();
  t=Math.max(0,Math.min(t,P.buf.duration-0.01));
  var s0=P.ctx.createBufferSource();s0.buffer=P.buf;s0.playbackRate.value=LES.rate;s0.connect(P.ctx.destination);
@@ -1178,6 +1191,7 @@ function pPlayFile(t,e){
  s0.onended=function(){if(P.src!==s0)return;P.src=null;P.playing=false;P.off=e!=null?e:P.buf.duration};
  s0.start(0,t);
  if(e!=null&&e>t)s0.stop(P.ctx.currentTime+(e-t)/LES.rate);
+ setTimeout(function(){if(P.src===s0&&P.ctx.state!=="running")uiAlert("Trình duyệt đang chặn âm thanh. Hãy chạm vào nút «Phát câu này» một lần nữa. Trên iPhone, kiểm tra thêm công tắc im lặng và âm lượng.")},600);
 }
 function pTime(){var l=curLesson();if(!l)return 0;return l.src.type==="file"?pPos():LES.ytTime}
 function pPlayAt(t,e){
@@ -1526,7 +1540,7 @@ function renderLBody(){
  <div class="row"><input id="lans" class="${cls}" placeholder="Nghe và gõ chữ Hán hoặc pinyin của câu" autocomplete="off" value="${esc(LES.typed||"")}"${LES.res?" disabled":""}></div>
  ${res}
  <table class="keys"><tr><td><kbd>Tab</kbd></td><td>Nghe lại câu và gõ lại</td></tr><tr><td><kbd>Enter</kbd></td><td>Chấm bài. Sai: Enter lần nữa để xoá phần đã gõ. Đúng: Enter để sang câu mới</td></tr><tr><td><kbd>→</kbd> <kbd>←</kbd></td><td>Câu tiếp theo / câu trước</td></tr><tr><td><kbd>↓</kbd></td><td>Xem đáp án</td></tr></table>
- ${ytLink}<p class="mu">Điểm: ${LES.score.ok}/${LES.score.n} · <a href="#" id="lscr" style="color:var(--ac)">✎ Lời thoại (dán / sửa)</a></p>
+ ${ytLink}<p class="mu">Không nghe tiếng? Chạm nút «Phát câu này» và kiểm tra âm lượng, công tắc im lặng (iPhone).</p><p class="mu">Điểm: ${LES.score.ok}/${LES.score.n} · <a href="#" id="lscr" style="color:var(--ac)">✎ Lời thoại (dán / sửa)</a></p>
  ${LES.edit?`<div class="card" style="margin:8px 0 0"><b>Lời thoại theo từng đoạn nghe</b><p class="mu" style="text-align:left;margin:6px 0">Mỗi dòng ứng với một đoạn nghe, theo thứ tự (bài có ${n} đoạn). Có thể dán cả dòng có mốc giờ, mốc sẽ bị bỏ qua.</p><textarea id="lscript" rows="8" style="width:100%">${esc(l.items.map(function(i){return i.txt}).join("\n"))}</textarea><div class="row"><button class="pri" id="lscs">Lưu và làm lại</button><button id="lscc">Đóng</button></div></div>`:""}
  </div>`;
  $("lscr").onclick=function(e){e.preventDefault();LES.edit=!LES.edit;renderLBody()};
@@ -1575,5 +1589,3 @@ if(FIRST&&/^https?:/.test(location.protocol)){
 </script>
 </body>
 </html>
-
-</body></html>
